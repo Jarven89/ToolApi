@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -40,6 +41,12 @@ public class VideoServiceImpl implements VideoService {
     @Resource(name = "wxUserService")
     private WxUserService wxUserService;
 
+
+    @Value("${py_dy.host}")
+    String pyDyHist;
+
+    @Value("${host}")
+    String host;
     @Resource
     private RestTemplate restTemplate;
 
@@ -98,7 +105,7 @@ public class VideoServiceImpl implements VideoService {
             Asserts.urlParsingFail("解析链接ID异常");
         //获取链接ID
         String id = matcher.group(1);
-        String api = "http://localhost/api/douyin/web/fetch_one_video?aweme_id=" + id;
+        String api = pyDyHist + "/api/douyin/web/fetch_one_video?aweme_id=" + id;
         String dyWebApi = "https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=" + id;
         String content = restTemplateUtil.getForObject(api, httpHeaders, String.class);
 
@@ -110,10 +117,10 @@ public class VideoServiceImpl implements VideoService {
         videoInfoDto.setTime(videoInfo.getString("create_time"));
 
         videoInfoDto.setCover(videoInfo.getJSONObject("video").getJSONObject("origin_cover").getJSONArray("url_list").getString(1));
-        videoInfoDto.setUrl("http://localhost:10521/api/video/video/" + id);
+        videoInfoDto.setUrl(host+"/api/video/video/" + id);
         JSONArray jsonArray = videoInfo.getJSONObject("video").getJSONObject("play_addr").getJSONArray("url_list");
-        log.info("videoUrls:{}",jsonArray);
-        videoInfoMap.put("video",jsonArray.getString(2));
+        log.info("videoUrls:{}", jsonArray);
+        videoInfoMap.put("video", jsonArray.getString(2));
         videoInfoDto.setTitle(videoInfo.getString("desc"));
         JSONObject author = videoInfo.getJSONObject("author");
         videoInfoDto.setAuthor(author.getString("nickname"));
@@ -124,7 +131,7 @@ public class VideoServiceImpl implements VideoService {
             videoInfoDto.setAvatar(videoInfo.getJSONObject("author").getJSONObject("avatar_thumb").getJSONArray("url_list").getString(0));
 
         }
-        lruCache.put(id,videoInfoMap);
+        lruCache.put(id, videoInfoMap);
         return videoInfoDto;
     }
 

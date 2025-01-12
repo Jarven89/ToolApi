@@ -14,6 +14,7 @@ spring:
   resources:
     add-mappings: false
 server:
+
   port: 10521
 wx:
   appId: wx7989adf212f693c5
@@ -22,4 +23,9 @@ logging:
   file:
     name: toolApi.log
 
+#请求抖音的地址
+py_dy:
+  host: http://localhost:8001
+#  这个服务的域名
+host: http://1.92.68.124:10521
 
