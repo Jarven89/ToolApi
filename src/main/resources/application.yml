@@ -1,9 +1,10 @@
 spring:
   datasource:
-    driver-class-name: org.h2.Driver
-    url: jdbc:h2:file:/Users/smile/Desktop/ToolApi/db/tool_api_test
+    driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
-    password: 123456
+    password: 1234%^&*QWER
+    url: jdbc:mysql://1.92.68.124:3306/tool_api_test?autoReconnect=true&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
+
   h2:
     console:
       path: /h2-console
@@ -15,8 +16,8 @@ spring:
 server:
   port: 10521
 wx:
-  appId: #填写你自己的小程序appId
-  secret: #填写你自己的小程序secret
+  appId: wx7989adf212f693c5
+  secret: 2d8db196a92760340a845050511c999f
 logging:
   file:
     name: toolApi.log

@@ -3,6 +3,8 @@ package com.xtyu.toolapi.service.impl;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.xtyu.toolapi.exception.Asserts;
 import com.xtyu.toolapi.mapper.ParsingInfoMapper;
 import com.xtyu.toolapi.model.dto.VideoInfoDto;
@@ -11,6 +13,7 @@ import com.xtyu.toolapi.model.entity.WxUser;
 import com.xtyu.toolapi.service.VideoService;
 import com.xtyu.toolapi.service.WxUserService;
 import com.xtyu.toolapi.utils.RestTemplateUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
@@ -20,6 +23,9 @@ import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.Resource;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,6 +35,7 @@ import java.util.regex.Pattern;
  * @description:phone 17521111022
  */
 @Service
+@Slf4j
 public class VideoServiceImpl implements VideoService {
     @Resource(name = "wxUserService")
     private WxUserService wxUserService;
@@ -41,6 +48,11 @@ public class VideoServiceImpl implements VideoService {
 
     @Resource
     private ParsingInfoMapper parsingInfoMapper;
+
+    public static Cache<String, Map<String, String>> lruCache = CacheBuilder.newBuilder()
+            .maximumSize(100)
+            .expireAfterAccess(30, TimeUnit.MINUTES)
+            .build();
 
     @Override
     public VideoInfoDto getVideoInfo(String openid, String url) {
@@ -86,17 +98,33 @@ public class VideoServiceImpl implements VideoService {
             Asserts.urlParsingFail("解析链接ID异常");
         //获取链接ID
         String id = matcher.group(1);
+        String api = "http://localhost/api/douyin/web/fetch_one_video?aweme_id=" + id;
         String dyWebApi = "https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=" + id;
-        String content = restTemplateUtil.getForObject(dyWebApi, httpHeaders, String.class);
-        Asserts.urlInfoNotNull(content, "API请求异常");
-        JSONObject videoInfo = JSON.parseObject(content).getJSONArray("item_list").getJSONObject(0);
+        String content = restTemplateUtil.getForObject(api, httpHeaders, String.class);
+
+        Map<String, String> videoInfoMap = new HashMap<>(3);
+//        Asserts.urlInfoNotNull(content, "API请求异常");
+//        JSONObject videoInfo = JSON.parseObject(content).getJSONArray("item_list").getJSONObject(0);
+        JSONObject videoInfo = JSON.parseObject(content).getJSONObject("data").getJSONObject("aweme_detail");
         VideoInfoDto videoInfoDto = new VideoInfoDto();
         videoInfoDto.setTime(videoInfo.getString("create_time"));
-        videoInfoDto.setCover(videoInfo.getJSONObject("video").getJSONObject("origin_cover").getJSONArray("url_list").getString(0));
-        videoInfoDto.setUrl(videoInfo.getJSONObject("video").getJSONObject("play_addr").getJSONArray("url_list").getString(0).replace("playwm", "play"));
+
+        videoInfoDto.setCover(videoInfo.getJSONObject("video").getJSONObject("origin_cover").getJSONArray("url_list").getString(1));
+        videoInfoDto.setUrl("http://localhost:10521/api/video/video/" + id);
+        JSONArray jsonArray = videoInfo.getJSONObject("video").getJSONObject("play_addr").getJSONArray("url_list");
+        log.info("videoUrls:{}",jsonArray);
+        videoInfoMap.put("video",jsonArray.getString(2));
         videoInfoDto.setTitle(videoInfo.getString("desc"));
-        videoInfoDto.setAuthor(videoInfo.getJSONObject("author").getString("nickname"));
-        videoInfoDto.setAvatar(videoInfo.getJSONObject("author").getJSONObject("avatar_larger").getJSONArray("url_list").getString(0));
+        JSONObject author = videoInfo.getJSONObject("author");
+        videoInfoDto.setAuthor(author.getString("nickname"));
+        if (author.containsKey("avatar_larger")) {
+            videoInfoDto.setAvatar(videoInfo.getJSONObject("author").getJSONObject("avatar_larger").getJSONArray("url_list").getString(0));
+
+        } else if (author.containsKey("avatar_thumb")) {
+            videoInfoDto.setAvatar(videoInfo.getJSONObject("author").getJSONObject("avatar_thumb").getJSONArray("url_list").getString(0));
+
+        }
+        lruCache.put(id,videoInfoMap);
         return videoInfoDto;
     }
 
