@@ -1,5 +1,6 @@
 package com.xtyu.toolapi.service.impl;
 
+import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -13,6 +14,7 @@ import com.xtyu.toolapi.model.entity.WxUser;
 import com.xtyu.toolapi.service.VideoService;
 import com.xtyu.toolapi.service.WxUserService;
 import com.xtyu.toolapi.utils.RestTemplateUtil;
+import com.xtyu.toolapi.utils.UrlUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -23,9 +25,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.Resource;
+import java.net.URI;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,11 +59,19 @@ public class VideoServiceImpl implements VideoService {
 
     @Resource
     private ParsingInfoMapper parsingInfoMapper;
+    private static final Pattern GLOBAL_DOUYIN_PATTERN = Pattern.compile("/share/video/([\\d]*)[/|?]");
 
-    public static Cache<String, Map<String, String>> lruCache = CacheBuilder.newBuilder()
-            .maximumSize(100)
-            .expireAfterAccess(30, TimeUnit.MINUTES)
-            .build();
+    /**
+     * 根据数据路里的video Id 获取他的重定向地址
+     *
+     * @param videoId
+     * @return
+     */
+    @Override
+    public String getRedirectByVideoId(String videoId) {
+        ParsingInfo parsingInfo = parsingInfoMapper.selectById(videoId);
+        return parsingInfo.getRedirectUrl();
+    }
 
     @Override
     public VideoInfoDto getVideoInfo(String openid, String url) {
@@ -73,69 +85,59 @@ public class VideoServiceImpl implements VideoService {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.set("User-Agent", "Mozilla/5.0 (Linux; Android 5.0; SM-G900P Build/LRX21T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Mobile Safari/537.36");
         httpHeaders.set("Referer", url);
-        VideoInfoDto videoInfoDto;
+
         //抖音快手Java解析其余短视频平台Java版本暂时没时间写先用php
-        if (url.contains("douyin")) {
-            videoInfoDto = parsingDyVideoInfo(url, httpHeaders);
-        } else if (url.contains("kuaishou")) {
-            videoInfoDto = parsingKsuVideoInfo(url, httpHeaders);
-        } else {
-            videoInfoDto = phpParsingVideoInfo(url);
+        if (!url.contains("douyin")) {
+            Asserts.urlParsingFail("不支持的链接");
         }
+        ParsingInfo parsingInfo = parsingDyVideoInfo(url, httpHeaders);
         wxUser.setVideoNumber(wxUser.getVideoNumber() - 1);
         wxUser.setLastParsingTime(new Date());
         wxUserService.updateById(wxUser);
-        ParsingInfo parsingInfo = new ParsingInfo();
-        parsingInfo.setTitle(videoInfoDto.getTitle());
-        parsingInfo.setDownloadUrl(videoInfoDto.getUrl());
-        parsingInfo.setAuthor(videoInfoDto.getAuthor());
-        parsingInfo.setCover(videoInfoDto.getCover());
-        parsingInfo.setUserOpenId(wxUser.getOpenId());
-        parsingInfo.setCreateTime(new Date());
+        parsingInfo.setUserOpenId(openid);
         parsingInfoMapper.insert(parsingInfo);
-        return videoInfoDto;
+
+        return VideoInfoDto.builder().author(parsingInfo.getAuthor()).avatar(parsingInfo.getAvatar())
+                .title(parsingInfo.getTitle()).cover(parsingInfo.getCover())
+                .id(Long.toString(parsingInfo.getId()))
+                .time(parsingInfo.getCreateTime().toString())
+                .url(host + "/api/video/video/" + parsingInfo.getId()).build();
     }
 
-    @Override
-    public VideoInfoDto parsingDyVideoInfo(String url, HttpHeaders httpHeaders) {
+    public ParsingInfo parsingDyVideoInfo(String url, HttpHeaders httpHeaders) {
         //获取重定向后的地址
-        url = restTemplate.headForHeaders(url).getLocation().toString();
-        Matcher matcher = Pattern.compile("/share/video/([\\d]*)[/|?]").matcher(url);
-        if (!matcher.find())
-            Asserts.urlParsingFail("解析链接ID异常");
+        URI location = restTemplate.headForHeaders(url).getLocation();
+        if (location != null) {
+            url = location.toString();
+        }
+        Matcher matcher = GLOBAL_DOUYIN_PATTERN.matcher(url);
+        if (!matcher.find()) {
+            Asserts.urlParsingFail("解析链接ID:" + url + "异常");
+        }
         //获取链接ID
         String id = matcher.group(1);
         String api = pyDyHist + "/api/douyin/web/fetch_one_video?aweme_id=" + id;
-        String dyWebApi = "https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=" + id;
         String content = restTemplateUtil.getForObject(api, httpHeaders, String.class);
-
-        Map<String, String> videoInfoMap = new HashMap<>(3);
-//        Asserts.urlInfoNotNull(content, "API请求异常");
-//        JSONObject videoInfo = JSON.parseObject(content).getJSONArray("item_list").getJSONObject(0);
         JSONObject videoInfo = JSON.parseObject(content).getJSONObject("data").getJSONObject("aweme_detail");
-        VideoInfoDto videoInfoDto = new VideoInfoDto();
-        videoInfoDto.setTime(videoInfo.getString("create_time"));
-
-        videoInfoDto.setCover(videoInfo.getJSONObject("video").getJSONObject("origin_cover").getJSONArray("url_list").getString(1));
-        videoInfoDto.setUrl(host+"/api/video/video/" + id);
-        JSONArray jsonArray = videoInfo.getJSONObject("video").getJSONObject("play_addr").getJSONArray("url_list");
+        ParsingInfo videoInfoDto = new ParsingInfo();
+        JSONObject videoJson = videoInfo.getJSONObject("video");
+        videoInfoDto.setSourceId(id);
+        videoInfoDto.setOriginUri(videoJson.getJSONObject("play_addr").getString("uri"));
+        videoInfoDto.setCover(videoJson.getJSONObject("origin_cover").getJSONArray("url_list").getString(1));
+        JSONArray jsonArray = videoJson.getJSONObject("play_addr").getJSONArray("url_list");
+        videoInfoDto.setOriginUrls(jsonArray.toJavaList(String.class));
         log.info("videoUrls:{}", jsonArray);
-        videoInfoMap.put("video", jsonArray.getString(2));
         videoInfoDto.setTitle(videoInfo.getString("desc"));
         JSONObject author = videoInfo.getJSONObject("author");
         videoInfoDto.setAuthor(author.getString("nickname"));
         if (author.containsKey("avatar_larger")) {
             videoInfoDto.setAvatar(videoInfo.getJSONObject("author").getJSONObject("avatar_larger").getJSONArray("url_list").getString(0));
-
         } else if (author.containsKey("avatar_thumb")) {
             videoInfoDto.setAvatar(videoInfo.getJSONObject("author").getJSONObject("avatar_thumb").getJSONArray("url_list").getString(0));
-
         }
-        lruCache.put(id, videoInfoMap);
         return videoInfoDto;
     }
 
-    @Override
     public VideoInfoDto parsingKsuVideoInfo(String url, HttpHeaders httpHeaders) {
         Matcher matcher = Pattern.compile("(https?://v.kuaishou.com/[\\S]*)").matcher(url);
         VideoInfoDto videoInfoDto = null;
@@ -151,7 +153,7 @@ public class VideoServiceImpl implements VideoService {
                     if (matcherForPageData.find()) {
                         String pageData = matcherForPageData.group(1);
                         JSONObject pageDataOb = JSONObject.parseObject(pageData);
-                        videoInfoDto = new VideoInfoDto();
+                        videoInfoDto = VideoInfoDto.builder().build();
                         JSONObject mediaJob = pageDataOb.getJSONObject("video");
                         String photoType = mediaJob.getString("type");
                         if ("video".equals(photoType)) {

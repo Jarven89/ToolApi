@@ -1,6 +1,9 @@
 package com.xtyu.toolapi.model.dto;
 
+import lombok.Builder;
 import lombok.Data;
+
+import java.util.List;
 
 /**
  * @author: 小熊
@@ -8,8 +11,11 @@ import lombok.Data;
  * @description:phone 17521111022
  */
 @Data
+@Builder
 public class VideoInfoDto {
+    String id ;
     private String author;//视频作者
+
     private String avatar;//作者头像
     private String time;
     private String title; //视频标题

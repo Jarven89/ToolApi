@@ -6,16 +6,14 @@ import com.xtyu.toolapi.model.entity.ParsingInfo;
 import com.xtyu.toolapi.model.support.BaseResponse;
 import com.xtyu.toolapi.service.VideoService;
 import com.xtyu.toolapi.service.impl.VideoServiceImpl;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Calendar;
 import java.util.List;
 
@@ -33,18 +31,29 @@ public class VideoController {
     VideoService videoService;
     private final RestTemplate restTemplate = new RestTemplate();
     @GetMapping("/video/{vid}")
-    public ResponseEntity<byte[]> dyRedirect(@PathVariable String vid, HttpServletResponse response) throws IOException {
-        String video = VideoServiceImpl.lruCache.getIfPresent(vid).get("video");
-        try {
-            // 发送请求获取视频流
-            ResponseEntity<byte[]> responseEntity = restTemplate.getForEntity(video, byte[].class);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-            return new ResponseEntity<>(responseEntity.getBody(), headers, HttpStatus.OK);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+    public void dyRedirect(@PathVariable String vid, HttpServletResponse response) throws IOException {
+        String redirectByVideoId = videoService.getRedirectByVideoId(vid);
+//        try {
+//            // 发送请求获取视频流
+//            ResponseEntity<byte[]> responseEntity = restTemplate.getForEntity(redirectByVideoId, byte[].class);
+//            HttpHeaders headers = new HttpHeaders();
+//            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+//            return new ResponseEntity<>(responseEntity.getBody(), headers, HttpStatus.OK);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+//        }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Referer", redirectByVideoId);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+        ResponseEntity<byte[]> responseEntity = restTemplate.exchange(redirectByVideoId, HttpMethod.GET, entity, byte[].class);
+        byte[] videoBytes = responseEntity.getBody();
+        response.setContentType("video/mp4");
+        OutputStream outputStream = response.getOutputStream();
+        outputStream.write(videoBytes);
+        outputStream.flush();
+        outputStream.close();
     }
 
     /***
