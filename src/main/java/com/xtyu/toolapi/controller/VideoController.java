@@ -34,31 +34,34 @@ public class VideoController {
     private final RestTemplate restTemplate = new RestTemplate();
 
     @GetMapping("/video/{vid}")
-    public void dyRedirect(@PathVariable String vid, HttpServletResponse response) throws IOException {
+    public ResponseEntity<byte[]> dyRedirect(@PathVariable String vid, HttpServletResponse response) throws IOException {
         String redirectByVideoId = videoService.getRedirectByVideoId(vid);
-//        try {
-//            // 发送请求获取视频流
-//            ResponseEntity<byte[]> responseEntity = restTemplate.getForEntity(redirectByVideoId, byte[].class);
+        try {
+            // 发送请求获取视频流
+            ResponseEntity<byte[]> responseEntity = restTemplate.getForEntity(redirectByVideoId, byte[].class);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            headers.add("Referer", redirectByVideoId);
+            return new ResponseEntity<>(responseEntity.getBody(), headers, HttpStatus.OK);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+//        try (OutputStream outputStream = response.getOutputStream()) {
 //            HttpHeaders headers = new HttpHeaders();
-//            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-//            return new ResponseEntity<>(responseEntity.getBody(), headers, HttpStatus.OK);
+//            headers.set("Referer", redirectByVideoId);
+//            HttpEntity<String> entity = new HttpEntity<>(headers);
+//            ResponseEntity<byte[]> responseEntity = restTemplate.exchange(redirectByVideoId, HttpMethod.GET, entity, byte[].class);
+//            byte[] videoBytes = responseEntity.getBody();
+//            response.setContentType("video/mp4");
+//            outputStream.write(videoBytes);
+//            outputStream.flush();
 //        } catch (Exception e) {
-//            e.printStackTrace();
-//            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+//            log.error("read video error:{}", e.getMessage(), e);
 //        }
 
-        try (OutputStream outputStream = response.getOutputStream()) {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Referer", redirectByVideoId);
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-            ResponseEntity<byte[]> responseEntity = restTemplate.exchange(redirectByVideoId, HttpMethod.GET, entity, byte[].class);
-            byte[] videoBytes = responseEntity.getBody();
-            response.setContentType("video/mp4");
-            outputStream.write(videoBytes);
-            outputStream.flush();
-        } catch (Exception e) {
-            log.error("read video error:{}", e.getMessage(), e);
-        }
+
 
 
     }
