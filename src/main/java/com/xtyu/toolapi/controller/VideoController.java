@@ -6,6 +6,7 @@ import com.xtyu.toolapi.model.entity.ParsingInfo;
 import com.xtyu.toolapi.model.support.BaseResponse;
 import com.xtyu.toolapi.service.VideoService;
 import com.xtyu.toolapi.service.impl.VideoServiceImpl;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
@@ -23,6 +24,7 @@ import java.util.List;
  * @description:phone 17521111022
  */
 @RestController
+@Slf4j
 @RequestMapping("/api/video")
 public class VideoController {
     @Resource
@@ -30,6 +32,7 @@ public class VideoController {
     @Resource
     VideoService videoService;
     private final RestTemplate restTemplate = new RestTemplate();
+
     @GetMapping("/video/{vid}")
     public void dyRedirect(@PathVariable String vid, HttpServletResponse response) throws IOException {
         String redirectByVideoId = videoService.getRedirectByVideoId(vid);
@@ -44,16 +47,20 @@ public class VideoController {
 //            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
 //        }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Referer", redirectByVideoId);
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-        ResponseEntity<byte[]> responseEntity = restTemplate.exchange(redirectByVideoId, HttpMethod.GET, entity, byte[].class);
-        byte[] videoBytes = responseEntity.getBody();
-        response.setContentType("video/mp4");
-        OutputStream outputStream = response.getOutputStream();
-        outputStream.write(videoBytes);
-        outputStream.flush();
-        outputStream.close();
+        try (OutputStream outputStream = response.getOutputStream()) {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Referer", redirectByVideoId);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<byte[]> responseEntity = restTemplate.exchange(redirectByVideoId, HttpMethod.GET, entity, byte[].class);
+            byte[] videoBytes = responseEntity.getBody();
+            response.setContentType("video/mp4");
+            outputStream.write(videoBytes);
+            outputStream.flush();
+        } catch (Exception e) {
+            log.error("read video error:{}", e.getMessage(), e);
+        }
+
+
     }
 
     /***
