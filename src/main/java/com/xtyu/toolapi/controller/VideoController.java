@@ -36,17 +36,17 @@ public class VideoController {
     @GetMapping("/video/{vid}")
     public ResponseEntity<byte[]> dyRedirect(@PathVariable String vid, HttpServletResponse response) throws IOException {
         String redirectByVideoId = videoService.getRedirectByVideoId(vid);
-        try {
-            // 发送请求获取视频流
-            ResponseEntity<byte[]> responseEntity = restTemplate.getForEntity(redirectByVideoId, byte[].class);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-            headers.add("Referer", redirectByVideoId);
-            return new ResponseEntity<>(responseEntity.getBody(), headers, HttpStatus.OK);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        RestTemplate restTemplate = new RestTemplate();
+        // 设置请求头
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Referer", redirectByVideoId);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+        // 发起请求
+        return restTemplate.exchange(
+                redirectByVideoId,
+                HttpMethod.GET,
+                entity,
+                byte[].class);
 
 //        try (OutputStream outputStream = response.getOutputStream()) {
 //            HttpHeaders headers = new HttpHeaders();
@@ -60,8 +60,6 @@ public class VideoController {
 //        } catch (Exception e) {
 //            log.error("read video error:{}", e.getMessage(), e);
 //        }
-
-
 
 
     }
