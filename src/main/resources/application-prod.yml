@@ -24,5 +24,5 @@ logging:
 py_dy:
   host: http://localhost:8001
 #  这个服务的域名
-host: http://1.92.68.124:10521
+host: http://1.92.68.124:10521${server.servlet.context-path}
 
