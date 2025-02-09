@@ -1,7 +1,5 @@
 server:
   port: 10521
-  servlet:
-    context-path: /mini/tools
 spring:
   profiles:
     active: dev
